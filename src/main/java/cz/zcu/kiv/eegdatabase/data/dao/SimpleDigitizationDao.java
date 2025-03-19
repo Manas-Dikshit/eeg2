@@ -2,7 +2,8 @@ package cz.zcu.kiv.eegdatabase.data.dao;
 
 import cz.zcu.kiv.eegdatabase.data.pojo.Digitization;
 import cz.zcu.kiv.eegdatabase.data.pojo.ResearchGroup;
-
+import org.hibernate.Session;
+import org.hibernate.query.Query;
 import java.util.List;
 
 /**
@@ -12,8 +13,7 @@ import java.util.List;
  * Time: 14:33
  * To change this template use File | Settings | File Templates.
  */
-public class SimpleDigitizationDao
-        extends SimpleGenericDao<Digitization, Integer> implements DigitizationDao {
+public class SimpleDigitizationDao extends SimpleGenericDao<Digitization, Integer> implements DigitizationDao {
 
     public SimpleDigitizationDao() {
         super(Digitization.class);
@@ -21,14 +21,13 @@ public class SimpleDigitizationDao
 
     @Override
     public Digitization getDigitizationByParams(float samplingRate, float gain, String filter) {
-        String[] paramNames = {"samplingRate", "gain", "filter"};
-        Object[] values = {samplingRate, gain, filter};
-        String HQLQuery = "from Digitization d where d.samplingRate = :samplingRate and d.gain = :gain and d.filter = :filter";
-        List<Digitization> list = getHibernateTemplate().findByNamedParam(HQLQuery, paramNames, values);
-        if (list.size() > 0) {
-            return list.get(0);
-        }
-        return null;
+        Session session = getSessionFactory().getCurrentSession();
+        String hqlQuery = "FROM Digitization d WHERE d.samplingRate = :samplingRate AND d.gain = :gain AND d.filter = :filter";
+        Query<Digitization> query = session.createQuery(hqlQuery, Digitization.class);
+        query.setParameter("samplingRate", samplingRate);
+        query.setParameter("gain", gain);
+        query.setParameter("filter", filter);
+        return query.uniqueResult(); // Returns a single result or null
     }
 
     @Override
@@ -39,33 +38,40 @@ public class SimpleDigitizationDao
 
     @Override
     public List<Digitization> getItemsForList() {
-        String hqlQuery = "from Digitization dig order by dig.samplingRate";
-        return getSessionFactory().getCurrentSession().createQuery(hqlQuery).list();
+        Session session = getSessionFactory().getCurrentSession();
+        String hqlQuery = "FROM Digitization dig ORDER BY dig.samplingRate";
+        return session.createQuery(hqlQuery, Digitization.class).list();
     }
 
     @Override
     public List<Digitization> getRecordsByGroup(int groupId) {
-        String hqlQuery = "from Digitization dig inner join fetch dig.researchGroups as rg where rg.researchGroupId = :groupId";
-        return getSessionFactory().getCurrentSession().createQuery(hqlQuery).setParameter("groupId", groupId).list();
-
+        Session session = getSessionFactory().getCurrentSession();
+        String hqlQuery = "SELECT dig FROM Digitization dig JOIN FETCH dig.researchGroups rg WHERE rg.researchGroupId = :groupId";
+        Query<Digitization> query = session.createQuery(hqlQuery, Digitization.class);
+        query.setParameter("groupId", groupId);
+        return query.list();
     }
 
     @Override
     public boolean canDelete(int id) {
-        String hqlQuery = "select dig.experiments from Digitization dig where dig.digitizationId = :id";
-        String[] names = {"id"};
-        Object[] values = {id};
-        List<Digitization> list = getHibernateTemplate().findByNamedParam(hqlQuery, names, values);
-        return (list.size() == 0);
+        Session session = getSessionFactory().getCurrentSession();
+        String hqlQuery = "SELECT dig.experiments FROM Digitization dig WHERE dig.digitizationId = :id";
+        Query<List<?>> query = session.createQuery(hqlQuery, List.class);
+        query.setParameter("id", id);
+        List<?> experiments = query.uniqueResult();
+        return (experiments == null || experiments.isEmpty()); // Safe check to prevent issues
     }
 
     @Override
     public boolean hasGroupRel(int id) {
-        String hqlQuery = "from Digitization dig where dig.d = :id";
-        String[] names = {"id"};
-        Object[] values = {id};
-        List<Digitization> list = getHibernateTemplate().findByNamedParam(hqlQuery, names, values);
-        return list.get(0).getResearchGroups().size() > 0;
+        Session session = getSessionFactory().getCurrentSession();
+        String hqlQuery = "FROM Digitization dig WHERE dig.digitizationId = :id";
+        Query<Digitization> query = session.createQuery(hqlQuery, Digitization.class);
+        query.setParameter("id", id);
+        List<Digitization> list = query.list();
+        
+        // Ensure we check for an empty list before accessing the first element
+        return !list.isEmpty() && !list.get(0).getResearchGroups().isEmpty();
     }
 
     @Override
